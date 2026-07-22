@@ -1,0 +1,46 @@
+<Window x:Class="Track.FlyoutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Track"
+        Width="360"
+        SizeToContent="Height"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        Deactivated="OnDeactivated">
+  <Border Background="{StaticResource CardBrush}"
+          BorderBrush="{StaticResource BorderBrush}"
+          BorderThickness="1"
+          CornerRadius="12"
+          Padding="16"
+          Margin="4">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.18"/>
+    </Border.Effect>
+    <DockPanel>
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+        <TextBlock Text="Track" FontSize="16" FontWeight="SemiBold"
+                   Foreground="{StaticResource FgBrush}"/>
+        <TextBlock x:Name="RefreshedLabel"
+                   DockPanel.Dock="Right"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Center"
+                   FontSize="11"
+                   Foreground="{StaticResource MutedBrush}"
+                   Text="—"/>
+      </DockPanel>
+
+      <TextBlock DockPanel.Dock="Bottom"
+                 Margin="0,12,0,0"
+                 FontSize="11"
+                 Foreground="{StaticResource MutedBrush}"
+                 TextWrapping="Wrap"
+                 Text="Pace charts land in Phase 1. Right-click tray → Settings to link providers."/>
+
+      <StackPanel x:Name="ProvidersPanel"/>
+    </DockPanel>
+  </Border>
+</Window>

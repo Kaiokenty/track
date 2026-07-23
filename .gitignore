@@ -49,6 +49,12 @@ Desktop.ini
 !.vscode/extensions.json
 
 # Local Track data (if ever copied into repo)
-**/history.db
-.env
+track-stderr.txt
+track-stdout.txt
+
 *.pfx
+
+# Tauri / Node
+**/node_modules/
+**/dist/
+apps/desktop/src-tauri/target/

@@ -1,0 +1,41 @@
+<UserControl x:Class="Track.FlyoutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="380"
+             MinHeight="200"
+             Background="{StaticResource CardBrush}">
+  <Border BorderBrush="{StaticResource BorderBrush}"
+          BorderThickness="1"
+          Padding="16">
+    <DockPanel>
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+        <TextBlock Text="Track" FontSize="16" FontWeight="SemiBold"
+                   Foreground="{StaticResource FgBrush}"/>
+        <TextBlock x:Name="RefreshedLabel"
+                   DockPanel.Dock="Right"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Center"
+                   FontSize="11"
+                   Foreground="{StaticResource MutedBrush}"
+                   Text="—"/>
+      </DockPanel>
+
+      <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
+        <RadioButton x:Name="WindowMonthly" Content="Monthly" GroupName="Window"
+                     Margin="0,0,12,0"/>
+        <RadioButton x:Name="WindowWeekly" Content="Weekly" GroupName="Window"/>
+      </StackPanel>
+
+      <TextBlock DockPanel.Dock="Bottom"
+                 Margin="0,12,0,0"
+                 FontSize="11"
+                 Foreground="{StaticResource MutedBrush}"
+                 TextWrapping="Wrap"
+                 Text="Dashed = recommended pace. Solid = actual."/>
+
+      <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="480">
+        <StackPanel x:Name="ProvidersPanel"/>
+      </ScrollViewer>
+    </DockPanel>
+  </Border>
+</UserControl>

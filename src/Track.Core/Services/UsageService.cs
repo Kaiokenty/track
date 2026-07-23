@@ -1,5 +1,6 @@
 using Track.Core.Adapters;
 using Track.Core.Models;
+using Track.Core.Storage;
 
 namespace Track.Core.Services;
 
@@ -10,16 +11,21 @@ namespace Track.Core.Services;
 public sealed class UsageService : IDisposable
 {
     private readonly IReadOnlyList<IProviderAdapter> _adapters;
+    private readonly SnapshotStore? _store;
     private readonly TimeSpan _pollInterval;
     private readonly Dictionary<string, ProviderSnapshot> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
-    public UsageService(IEnumerable<IProviderAdapter> adapters, TimeSpan? pollInterval = null)
+    public UsageService(
+        IEnumerable<IProviderAdapter> adapters,
+        TimeSpan? pollInterval = null,
+        SnapshotStore? store = null)
     {
         _adapters = adapters.ToList();
         _pollInterval = pollInterval ?? TimeSpan.FromMinutes(5);
+        _store = store;
     }
 
     public event EventHandler? SnapshotsChanged;
@@ -52,6 +58,7 @@ public sealed class UsageService : IDisposable
             {
                 var snap = await adapter.FetchAsync(cancellationToken).ConfigureAwait(false);
                 lock (_gate) _cache[adapter.Id] = snap;
+                RecordHistory(snap);
             }
             catch (Exception ex)
             {
@@ -99,6 +106,29 @@ public sealed class UsageService : IDisposable
         while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
         {
             await RefreshNowAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private void RecordHistory(ProviderSnapshot snap)
+    {
+        if (_store is null || snap.Status is not (ProviderStatus.Ok or ProviderStatus.Stale))
+            return;
+
+        foreach (var meter in snap.Meters)
+        {
+            try
+            {
+                _store.AppendMeterSample(
+                    snap.Id,
+                    meter.Id,
+                    meter.Used,
+                    meter.Limit,
+                    snap.FetchedAt);
+            }
+            catch
+            {
+                // History is best-effort.
+            }
         }
     }
 

@@ -1,5 +1,7 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
 
@@ -8,51 +10,45 @@ namespace Track;
 public sealed class TrayController : IDisposable
 {
     private readonly SettingsWindow _settings;
-    private readonly FlyoutWindow _flyout;
+    private readonly FlyoutView _flyout;
     private readonly TaskbarIcon _tray;
 
-    public TrayController(SettingsWindow settings, FlyoutWindow flyout)
+    public TrayController(SettingsWindow settings)
     {
         _settings = settings;
-        _flyout = flyout;
+        _flyout = new FlyoutView();
 
         _tray = new TaskbarIcon
         {
             ToolTipText = "Track — AI usage",
-            Icon = GenerateIcon(),
+            IconSource = LoadIcon(),
             ContextMenu = BuildMenu(),
+            TrayPopup = _flyout,
             MenuActivation = PopupActivationMode.RightClick,
-            NoLeftClickDelay = true
+            PopupActivation = PopupActivationMode.LeftClick,
+            NoLeftClickDelay = true,
+            Visibility = Visibility.Visible
         };
 
+        // Code-created TaskbarIcon is not in a visual tree, so Visibility alone does not
+        // register the Win32 notify icon. ForceCreate materializes it (H.NotifyIcon).
+        _tray.ForceCreate(enablesEfficiencyMode: false);
+
+        _tray.TrayPopupOpen += (_, _) => _flyout.Reload();
         _tray.TrayMouseDoubleClick += (_, _) => ShowSettings();
-        _tray.TrayLeftMouseUp += (_, _) => ToggleFlyout();
 
         App.Usage.SnapshotsChanged += (_, _) =>
         {
             Application.Current.Dispatcher.Invoke(() =>
             {
                 _tray.ToolTipText = BuildTooltip();
-                _flyout.Reload();
+                if (_flyout.IsVisible)
+                    _flyout.Reload();
             });
         };
     }
 
     public void Dispose() => _tray.Dispose();
-
-    private void ToggleFlyout()
-    {
-        if (_flyout.IsVisible)
-        {
-            _flyout.Hide();
-            return;
-        }
-
-        _flyout.Reload();
-        PositionNearTray(_flyout);
-        _flyout.Show();
-        _flyout.Activate();
-    }
 
     private void ShowSettings()
     {
@@ -61,9 +57,28 @@ public sealed class TrayController : IDisposable
         _settings.Activate();
     }
 
+    private void ShowUsageWindow()
+    {
+        // Fallback if tray popup is hard to discover: open as a normal window.
+        var win = new Window
+        {
+            Title = "Track",
+            Width = 400,
+            SizeToContent = SizeToContent.Height,
+            MaxHeight = 700,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new FlyoutView()
+        };
+        ((FlyoutView)win.Content).Reload();
+        win.Show();
+    }
+
     private ContextMenu BuildMenu()
     {
         var menu = new ContextMenu();
+
+        var openUsage = new MenuItem { Header = "Open usage" };
+        openUsage.Click += (_, _) => ShowUsageWindow();
 
         var refresh = new MenuItem { Header = "Refresh" };
         refresh.Click += async (_, _) => await App.Usage.RefreshNowAsync();
@@ -78,6 +93,7 @@ public sealed class TrayController : IDisposable
             Application.Current.Shutdown();
         };
 
+        menu.Items.Add(openUsage);
         menu.Items.Add(refresh);
         menu.Items.Add(openSettings);
         menu.Items.Add(new Separator());
@@ -89,32 +105,25 @@ public sealed class TrayController : IDisposable
     {
         var snaps = App.Usage.GetCachedSnapshots();
         var cursor = snaps.FirstOrDefault(s => s.Id == "cursor");
-        if (cursor?.Meters.FirstOrDefault() is { } meter)
-            return $"Track — {cursor.DisplayName} {meter.PercentUsed:0}% · {cursor.Status}";
+        if (cursor?.Meters.FirstOrDefault(m => m.Id == "total") is { } meter)
+            return $"Track — Cursor {meter.PercentUsed:0}% · {cursor.Status}";
         return "Track — AI usage";
     }
 
-    private static void PositionNearTray(Window window)
+    private static BitmapFrame LoadIcon()
     {
-        var work = SystemParameters.WorkArea;
-        window.Left = work.Right - window.Width - 12;
-        window.Top = work.Bottom - window.Height - 12;
-    }
-
-    private static System.Drawing.Icon GenerateIcon()
-    {
-        // Simple teal circle — replace with branded .ico later.
-        var bmp = new System.Drawing.Bitmap(32, 32);
-        using (var g = System.Drawing.Graphics.FromImage(bmp))
+        var uri = new Uri("pack://application:,,,/Assets/track.ico", UriKind.Absolute);
+        try
         {
-            g.Clear(System.Drawing.Color.Transparent);
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var brush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(15, 118, 110));
-            g.FillEllipse(brush, 2, 2, 28, 28);
-            using var pen = new System.Drawing.Pen(System.Drawing.Color.White, 2);
-            g.DrawEllipse(pen, 8, 8, 16, 16);
+            return BitmapFrame.Create(uri);
         }
-
-        return System.Drawing.Icon.FromHandle(bmp.GetHicon());
+        catch
+        {
+            // Unpackaged / missing resource fallback: load from disk next to the exe.
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", "track.ico");
+            if (!File.Exists(path))
+                path = Path.Combine(AppContext.BaseDirectory, "track.ico");
+            return BitmapFrame.Create(new Uri(path, UriKind.Absolute));
+        }
     }
 }

@@ -130,51 +130,50 @@ Informed by OpenUsage.ai / CodexBar patterns, adapted for Win11.
 - Always present while the app runs (option: start with Windows).
 - **Pinned summary** (steal from OpenUsage pins): e.g. `C 41% · under` or mini remaining % — keep short; Windows tray tooltips are limited.
 - Tooltip: one-line summary, e.g. `Cursor 41% · under pace · OpenAI $12/$50`.
-- Left-click → **flyout**.
-- Right-click → Refresh · Open settings · Quit.
-- Optional **global hotkey** to toggle flyout (CodexBar / OpenUsage).
-- Toast when crossing warn/critical thresholds or when **above recommended pace** by alert %.
+- Left-click → **flyout** (preloaded hidden webview — show only, no cold start).
+- Right-click → **Open usage** · Refresh · Settings · Quit.
+- Optional **global hotkey** to toggle flyout (CodexBar / OpenUsage) — Phase 2.
+- Toast when crossing warn/critical thresholds or when **above recommended pace** by alert % — Phase 2.
 
 ### 4.2 Tray flyout (primary)
 
-Compact panel (~320–400px wide). Not a second browser. **Open instantly on cached data** (stale-while-revalidate).
+Compact panel (~360–400px). Tauri frameless window + React. **Open instantly on cached data** (stale-while-revalidate). Typography: **JetBrains Mono**.
 
-Layout (top → bottom):
+Layout (top → bottom) — design-audit order:
 
-1. **Header:** last refreshed · “Next update in Xm” · settings gear.
-2. **Provider sections** (grouped like OpenUsage.ai): plan name + meters.
-   - Per meter: label (Session / Weekly / Total / API), **% left or used** (click to flip), **Resets in …**
-   - **Pace badge:** under / on track / over recommended.
-3. **Pace chart** (our differentiator): for the focused meter/window — recommended line vs actual.
-4. **Burn projection:** “At current rate, limit on Fri 6pm.”
-5. Footer: empty-state CTA or “Open provider dashboard.”
+1. **Header:** brand · “Updated Xm ago”.
+2. **Segmented** Monthly / Weekly.
+3. **Plan badge** + **pace verdict chip** (over / under / on track).
+4. **Pace chart** (uPlot) — actual vs recommended; legend; Y as % of limit.
+5. **One-line remaining** + reset countdown; burn projection when over pace.
+6. **Secondary meters** — progress bars + countdown (Total / Auto / API / Weekly).
 
-Empty state: “Link Cursor or add an API key in Settings.”
+Empty state: “Link Cursor…” → Open Settings.
 
 **Cursor section should show** (when API returns them): Total · Auto · API · Extra/on-demand $ — same mental model as OpenUsage.ai’s Cursor card.
 
 ### 4.3 Settings window
 
-Sidebar sections:
+Tauri window (hide-on-close ≠ quit). Sidebar + content; JetBrains Mono.
 
-| Section | Job |
-|---------|-----|
-| **Connections** | Link / unlink providers; auto-detect installed tools |
-| **Layout** | Reorder providers; show/hide meters; pin tray summary fields |
-| **Budgets** | Optional monthly $ caps for API cost mode |
-| **Alerts** | % of limit, % above recommended pace, reset-soon |
-| **General** | Launch at startup, poll interval, hotkey, theme follow system |
+| Section | Job | Status |
+|---------|-----|--------|
+| **Connections** | Link / unlink providers; auto-detect installed tools | Phase 1 |
+| **Layout** | Reorder providers; show/hide meters; pin tray summary fields | Phase 2 |
+| **Budgets** | Optional monthly $ caps for API cost mode | Phase 2 |
+| **Alerts** | % of limit, % above recommended pace, reset-soon | Phase 2 |
+| **General** | Poll interval (now); launch at startup, hotkey, theme (Phase 2) | Partial |
 
 **Connections row pattern:**
 
 ```
-[Logo] Cursor          Linked · Ultra · resets in 18d    [Disconnect]
-[Logo] OpenAI API      Admin key · cost tracking         [Edit] [Remove]
-[Logo] Claude API      Not linked                        [Connect]
-[Logo] Grok (xAI)      Not linked                        [Connect]
+[Glyph] Cursor          Pro · Connected                    [Connect/Refresh]
+[Glyph] OpenAI API      Admin API cost tracking — Phase 2  [Soon]
+[Glyph] Claude API      …                                  [Soon]
+[Glyph] Grok (xAI)      …                                  [Soon]
 ```
 
-“Subscribe” only **deep-links** to official pricing. We do not sell their plans.
+“Subscribe” only **deep-links** to official pricing. We do not sell their plans. No modal MessageBox — inline status on the row.
 
 ### 4.4 What we deliberately skip (for now)
 
@@ -312,60 +311,61 @@ Browser is for **setup and help**, not continuous website scraping. Same philoso
 
 ---
 
-## 9. Architecture (sketch)
+## 9. Architecture (shipping)
 
 ```
-UI (WinUI flyout + settings)
-        │
+React (Vite) — flyout + Settings + uPlot
+        │  invoke / listen (JSON)
         ▼
-UsageService (poll, stale-while-revalidate, alerts)
+Tauri 2 Rust host — tray, windows, poll loop
         │
-        ├── IProviderAdapter[]   ← plugin-style boundary (OpenUsage pattern)
-        │     CursorSessionAdapter
-        │     OpenAIAdminAdapter
-        │     AnthropicAdminAdapter
-        │     ClaudeCodeAdapter (later)
-        │     XaiApiAdapter (later)
-        │     ManualAdapter
-        │
-        ├── CredentialStore (Windows Credential Manager / DPAPI)
-        ├── SnapshotStore (SQLite history for charts)
-        └── optional LocalHttpApi (later) — read-only limits for other tools
+        ├── adapters (Cursor session · OpenAI/Anthropic later · Manual)
+        ├── pace calculator
+        ├── SnapshotStore (SQLite → %LOCALAPPDATA%\Track\history.db)
+        ├── settings.json + keyring (Credential Manager)
+        └── optional LocalHttpApi (later)
 ```
+
+**UI ↔ host contract (commands):** `get_snapshots`, `refresh_now`, `get_pace`, `connect_provider`, `get_settings` / `update_settings`, `open_settings_window`, `hide_flyout` / `show_flyout`.  
+**Events:** `snapshots-changed`, `tray-tooltip`.
 
 **Normalized snapshot:**
 
 ```text
 ProviderSnapshot {
-  id, displayName, planLabel?, mode: subscription | api_cost | manual
+  id, displayName, planLabel?, mode: subscription | apiCost | manual
   meters: [{
     id, label                    // "Session", "Weekly", "Total", "API"
-    kind: monthly | weekly | rolling_5h | custom
+    kind: monthly | weekly | rolling5h | custom
     start, end, resetsAt
     used, limit, remaining
-    unit: percent | usd_cents | requests
-    series?: [{ t, used }]
+    unit: percent | usdCents | requests
+    series?: [{ timestamp, used }]
   }]
   extras?: [{ label, value }]    // "Extra usage $364"
-  status: ok | needs_reauth | error | stale
+  status: ok | needsReauth | error | stale | notLinked
   fetchedAt
 }
 ```
 
+(camelCase JSON over the Tauri bridge; mirrors former `Track.Core` models.)
+
 ---
 
-## 10. Tech direction (Windows)
+## 10. Tech direction (Windows) — locked
 
-| Choice | Recommendation |
-|--------|----------------|
-| UI | **Phase 0 scaffold: WPF + H.NotifyIcon** (builds on stock .NET 8). WinUI 3 still optional later. |
-| Tray | H.NotifyIcon.Wpf |
-| Storage | SQLite history; Credential Manager for secrets (in-memory stub in scaffold) |
-| Packaging | MSIX preferred; unpackaged OK early |
-| Charts | LiveCharts2 (or similar) — line + area for pace (Phase 1) |
-| Alt stack | **Tauri** if we want faster web UI iteration |
+| Choice | Choice |
+|--------|--------|
+| UI | **Tauri 2 + React (Vite + TypeScript)** — flyout + Settings. Windows-only. |
+| Font | **JetBrains Mono** (`@fontsource/jetbrains-mono`) |
+| Tray | Tauri tray; preload hidden flyout webview for &lt;200ms open |
+| Storage | SQLite history; Windows Credential Manager via `keyring` |
+| Packaging | NSIS first; MSIX later |
+| Charts | **uPlot** — actual vs recommended + fill |
+| Runtime | WebView2 Evergreen (document in README) |
 
-**Scaffold note (Jul 2026):** `Track.sln` → `src/Track` + `src/Track.Core`. WinUI workload wasn’t installed, so Phase 0 uses WPF. Core is UI-agnostic for a later WinUI move if desired.
+**Layout:** [`apps/desktop/`](../apps/desktop/) — `src/` React UI, `src-tauri/` Rust host.  
+**Deprecated / do not extend:** WinUI 3, WPF (`src/Track`), LiveCharts2, H.NotifyIcon.Wpf, `Track.sln` as the product path. Dotnet tree is **archive / reference only** — no new polish.
 
 ---
 
@@ -373,7 +373,7 @@ ProviderSnapshot {
 
 | Priority | Feature | Source | Phase |
 |----------|---------|--------|-------|
-| P0 | Tray + popover / flyout | OpenUsage.ai, CodexBar | 0 |
+| P0 | Tray + popover / flyout | OpenUsage.ai, CodexBar | **0 — done** |
 | P0 | Stale-while-revalidate cache | OpenUsage.ai | 0–1 |
 | P0 | Cursor local session connect | OpenUsage, extensions | 1 |
 | P0 | Monthly pace chart vs recommended | **Track wedge** | 1 |
@@ -382,7 +382,7 @@ ProviderSnapshot {
 | P1 | Session + Weekly meters where available | OpenUsage.ai, MyUsage | 1–2 |
 | P1 | Cursor Total / Auto / API split | OpenUsage.ai | 1 |
 | P1 | Burn-rate projection | MyUsage, TokenBar | 1 |
-| P1 | Click flip used ⟷ left | OpenUsage.ai | 1 |
+| P1 | Click flip used ⟷ left | OpenUsage.ai | **2** (design-audit defer) |
 | P1 | Auto-detect installed tools | OpenUsage.sh | 1 |
 | P2 | Tray pinned metrics | OpenUsage.ai | 2 |
 | P2 | Customize order / hide meters | OpenUsage.ai | 2 |
@@ -400,23 +400,27 @@ ProviderSnapshot {
 
 ## 12. Build phases
 
-### Phase 0 — Skeleton
-- Tray icon, empty flyout, settings shell, start-with-Windows.
-- Cache layer stub (instant open).
+### Phase 0 — Skeleton — **done** (Tauri)
+- Tray icon, preloaded flyout, settings shell, SWR cache stub.
 
-### Phase 1 — Cursor + pace (MVP)
-- Auto-detect + Connect Cursor (local session).
-- Cursor meters: Total (+ Auto/API if present).
-- Monthly **pace chart** + under/over + burn projection.
-- Weekly view (derived or native).
-- Reset countdowns; last-good cache; manual fallback.
-- Poll ~5 min (OpenUsage default).
+### Phase 1 — Cursor + pace (MVP) — Tauri/React — **done**
+- Connect Cursor (local `state.vscdb` session).
+- Cursor meters: Total (+ Auto/API if present); weekly derived.
+- Monthly/weekly **pace chart** (uPlot) + verdict chip + burn projection.
+- Segmented Monthly/Weekly; reset countdowns; last-good cache.
+- Poll ~5 min; first-run Settings tip then tray-only.
+- Design-audit P0/P1 UX in React (hierarchy, meters, connection rows, glyphs, tokens, JetBrains Mono + motion craft).
+- Chart history via SQLite series; launch-at-startup; provider glyph marks.
 
-### Phase 2 — API cost + Mac-parity UX polish
+### Phase 2 — API cost + Mac-parity UX polish — **done**
 - OpenAI + Anthropic Admin adapters; $ pace vs budget.
 - Tray pins; customize layout; global hotkey; alerts.
-- Session/5h meter when data exists.
-- Today / 30-day spend tiles where we have series.
+- Today / 30-day spend tiles for API providers.
+- Click-to-flip used ⟷ left.
+- Deeper material polish (frosted surfaces in webview — **not** WinUI Mica/Fluent).
+
+### Phase 2 (remaining) — session/5h meter
+- Session/5h meter when provider exposes window (Cursor/Claude Code).
 
 ### Phase 3 — Ecosystem
 - Claude Code adapter; Grok/xAI; local HTTP API; Efficiency Mode.
@@ -424,6 +428,13 @@ ProviderSnapshot {
 
 ### Later
 - Store listing, more providers, Enterprise Claude analytics, CLI.
+
+### Retired approaches (do not revive)
+- WinUI 3 migration
+- WPF + H.NotifyIcon as the product UI
+- LiveCharts2 / custom WPF `Canvas` charts
+- Chart-only WebView2 island inside WPF
+- Permanent .NET sidecar beside Tauri
 
 ---
 
@@ -439,10 +450,11 @@ ProviderSnapshot {
 ## 14. Open decisions
 
 1. **App name** — keep “Track” or brand something else? (Avoid colliding with OpenUsage trademark if we ever imply affiliation.)
-2. **Weekly definition** — provider window vs calendar week vs fair-share of month?
-3. **WinUI vs Tauri** — native Win11 vs faster web UI (community OpenUsage has both philosophies).
-4. **Default tray pin** — Cursor remaining % vs pace badge vs nothing until user pins?
-5. **How aggressive on unofficial Cursor** — ship with strong manual fallback from day one? (**Yes**, recommended.)
+2. **Weekly definition** — provider window vs calendar week vs fair-share of month? (Current: fair-share derived week from billing period.)
+3. **Default tray pin** — Cursor remaining % vs pace badge vs nothing until user pins?
+4. **How aggressive on unofficial Cursor** — strong manual fallback from day one? (**Yes**.)
+
+**Closed:** UI stack = **Tauri 2 + React + uPlot + JetBrains Mono**. WinUI / WPF product paths abandoned.
 
 ---
 
@@ -453,7 +465,7 @@ ProviderSnapshot {
 - Flyout opens on **cached** data in &lt;200ms; refresh does not blank UI.
 - Shows reset countdown + under/over recommended for the billing window.
 - Survives Cursor API breakage via last-good + manual entry.
-- Feels like a Win11 tray citizen, not a browser wrapper.
+- Feels like a Win11 **tray citizen** (thin Tauri shell) — not an Electron-weight browser chrome app.
 
 ---
 
@@ -470,6 +482,7 @@ ProviderSnapshot {
 | OpenAI / Claude | Admin API keys for cost (Phase 2) |
 | Provider scope | Few adapters done well &gt; 30 half-broken ones |
 | Sync model | Local adapters; browser for setup only |
-| Stack | WinUI 3 (default) or Tauri — decide before scaffold |
+| Stack | **Tauri 2 + React + uPlot + JetBrains Mono**; core in Rust (`apps/desktop`) |
+| Deprecated | WinUI, WPF product UI, LiveCharts2 |
 
-**Next step:** lock name + WinUI vs Tauri, then scaffold Phase 0.
+**Next step:** Phase 3 — Claude Code adapter, Grok/xAI, local HTTP API.

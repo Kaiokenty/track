@@ -1,63 +1,54 @@
 # Track
 
-Windows 11 system-tray app for AI subscription + API usage — with **recommended pace** charts (actual vs linear budget).
+Windows 11 system-tray app for AI subscription + API usage — **recommended pace** charts (actual vs linear budget).
 
-Mac already has [OpenUsage.ai](https://www.openusage.ai/) / [CodexBar](https://github.com/steipete/codexbar). Track is the Windows tray equivalent. See [`docs/PLAN.md`](docs/PLAN.md) for product plan and competitive research.
-
-## Status
-
-**Phase 0 scaffold** — builds and runs:
-
-- Tray icon (left-click flyout, right-click menu)
-- Settings window (Connections / General shells)
-- Core models, pace calculator, provider adapter stubs
-- Stale-while-revalidate `UsageService` + SQLite history store
-
-**Not yet:** Cursor session sync, pace charts, Admin API keys (Phase 1–2).
+Primary stack: **Tauri 2 + React** (`apps/desktop`). Legacy WPF under `src/Track` is reference-only.
 
 ## Requirements
 
 - Windows 10/11
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [Node.js 20+](https://nodejs.org/)
+- [Rust](https://rustup.rs/) (stable)
+- WebView2 Evergreen (Windows 11 usually has it)
 
-> WinUI 3 was preferred in the plan but the Windows App SDK workload isn’t required for this scaffold. Phase 0 uses **WPF + H.NotifyIcon** so it builds on a stock .NET 8 install. Core logic is UI-agnostic if we move to WinUI later.
-
-## Run
+## Run (Tauri)
 
 ```powershell
-cd c:\Users\dev\Projects\track
-dotnet run --project src\Track\Track.csproj
+cd c:\Users\dev\Projects\track\apps\desktop
+npm install
+npm run tauri dev
 ```
 
 Then:
 
-1. Find the teal circle in the notification area (show hidden icons if needed).
-2. **Left-click** → flyout with provider stubs.
-3. **Right-click → Settings** → Connections.
-4. **Quit** from the tray menu (closing Settings only hides it).
+1. Find tray icon (overflow chevron if hidden).
+2. **Left-click** → flyout (pace chart + meters).
+3. **Right-click → Open usage / Settings / Quit**.
+4. First launch opens Settings once with a tray tip.
 
-## Solution layout
+## Layout
 
 ```
-Track.sln
+apps/desktop/          # Tauri 2 + Vite React
+  src/                 # React flyout + Settings (design-audit UX)
+  src-tauri/           # Rust: tray, UsageService, Cursor adapter, SQLite
+src/Track/             # Legacy WPF (dogfood / reference)
+src/Track.Core/        # Legacy .NET core (ported to Rust)
 docs/PLAN.md
-src/
-  Track.Core/          # models, pace, adapters, UsageService, SQLite
-  Track/               # WPF tray + settings UI
+docs/DESIGN_AUDIT.md
 ```
 
-| Piece | Path |
-|-------|------|
-| Pace math | `Track.Core/Pace/PaceCalculator.cs` |
-| Cursor stub | `Track.Core/Adapters/CursorSessionAdapter.cs` |
-| Poll + cache | `Track.Core/Services/UsageService.cs` |
-| Tray | `Track/TrayController.cs` |
-| Flyout | `Track/FlyoutWindow.xaml` |
-| Settings | `Track/SettingsWindow.xaml` |
+## Notes
 
-## Next (Phase 1)
+- Cursor connect reads local `state.vscdb` (same unofficial approach as Mac OpenUsage).
+- History DB: `%LOCALAPPDATA%\Track\history.db`
+- Settings: `%LOCALAPPDATA%\Track\settings.json`
+- Secrets (future Admin keys): Windows Credential Manager via `keyring`
 
-1. Read Cursor token from local `state.vscdb` / auth store.
-2. Call `GetCurrentPeriodUsage` (unofficial) and map Total / Auto / API meters.
-3. Draw recommended-pace line chart in the flyout.
-4. Wire Credential Manager for secrets; launch-at-startup.
+## Legacy WPF
+
+```powershell
+dotnet run --project src\Track\Track.csproj
+```
+
+Prefer Tauri for new work. See `docs/PLAN.md` Phase 2 for Admin APIs, pins, hotkey, click-to-flip, Fluent polish.

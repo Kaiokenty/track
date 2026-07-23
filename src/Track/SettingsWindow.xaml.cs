@@ -17,7 +17,6 @@ public partial class SettingsWindow : Window
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
-        // Closing settings should not quit the tray app.
         e.Cancel = true;
         Hide();
     }
@@ -81,24 +80,55 @@ public partial class SettingsWindow : Window
         Grid.SetColumn(text, 0);
         grid.Children.Add(text);
 
+        var isCursor = snap.Id == "cursor";
+        var linked = snap.Status is ProviderStatus.Ok or ProviderStatus.Stale;
         var button = new Button
         {
-            Content = snap.Status is ProviderStatus.Ok or ProviderStatus.Stale ? "Disconnect" : "Connect",
+            Content = linked ? "Refresh" : "Connect",
             Padding = new Thickness(12, 6, 12, 6),
             Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            IsEnabled = snap.Id == "cursor"
+            IsEnabled = isCursor || snap.Mode == ProviderMode.ApiCost
         };
         button.Click += async (_, _) =>
         {
-            await App.Usage.RefreshNowAsync();
-            MessageBox.Show(
-                snap.Id == "cursor"
-                    ? "Cursor connect will read the local session token in Phase 1.\nRefresh ran — see status in the tray flyout."
-                    : "API key linking lands in Phase 2.",
-                "Track",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            button.IsEnabled = false;
+            try
+            {
+                if (!isCursor)
+                {
+                    MessageBox.Show(
+                        "API key linking lands in Phase 2.",
+                        "Track",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+
+                await App.Usage.RefreshNowAsync();
+                var updated = App.Usage.GetCachedSnapshots().FirstOrDefault(s => s.Id == "cursor");
+                if (updated?.Status == ProviderStatus.Ok)
+                {
+                    MessageBox.Show(
+                        $"Connected to Cursor ({updated.PlanLabel}).\nCheck the tray flyout for pace charts.",
+                        "Track",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        updated?.StatusMessage ?? "Could not sync Cursor. Sign in to the Cursor app and try again.",
+                        "Track",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+            finally
+            {
+                button.IsEnabled = true;
+                ReloadConnections();
+            }
         };
         Grid.SetColumn(button, 1);
         grid.Children.Add(button);

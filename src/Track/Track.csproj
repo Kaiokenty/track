@@ -14,9 +14,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon />
+    <ApplicationIcon>Assets\track.ico</ApplicationIcon>
     <RootNamespace>Track</RootNamespace>
     <AssemblyName>Track</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\track.ico" />
+  </ItemGroup>
 
 </Project>
